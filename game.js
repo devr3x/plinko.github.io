@@ -103,6 +103,32 @@ function initializeGame() {
 }
 
 initializeGame();
+// Add these functions at the beginning after the constants
+
+function saveUserData() {
+    const userData = {
+        balance: balance,
+        lastFreeMoneyTime: lastFreeMoneyTime
+    };
+    localStorage.setItem('plinkoUserData', JSON.stringify(userData));
+}
+
+function loadUserData() {
+    const savedData = localStorage.getItem('plinkoUserData');
+    if (savedData) {
+        const userData = JSON.parse(savedData);
+        balance = userData.balance;
+        lastFreeMoneyTime = userData.lastFreeMoneyTime;
+        balanceDisplay.textContent = balance;
+    }
+}
+
+// Add these calls to save data
+function updateBalance(newBalance) {
+    balance = newBalance;
+    balanceDisplay.textContent = balance;
+    saveUserData();
+}
 
 function getSlotStyle(multiplier) {
     if (multiplier >= 200) return SLOT_COLORS.x200;
@@ -284,7 +310,7 @@ function handleBallLanding(ball) {
     const slot = slots.find(s => Math.abs(s.x - ball.x) < s.width/2);
     if (slot) {
         const winAmount = Math.floor(ball.bet * slot.multiplier);
-        balance += winAmount;
+        updateBalance(balance + winAmount);
         balanceDisplay.textContent = balance;
         
         requestAnimationFrame(() => {
@@ -401,7 +427,7 @@ function dropBalls() {
     const totalCost = betAmount * ballCount;
 
     if (betAmount >= 20 && balance >= totalCost) {
-        balance -= totalCost;
+        updateBalance(balance - totalCost);
         balanceDisplay.textContent = balance;
 
         const dropWidth = Math.min(canvas.width * 0.3, 200);
@@ -428,13 +454,12 @@ function updateTimer() {
     timerDisplay.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
     if (timeLeft === 0) {
-        balance += FREE_MONEY_AMOUNT;
-        balanceDisplay.textContent = balance;
+        updateBalance(balance + FREE_MONEY_AMOUNT);
         lastFreeMoneyTime = now;
+        saveUserData();
         createPopup(`+$${FREE_MONEY_AMOUNT} FREE!`, canvas.width/2, canvas.height/2);
     }
 }
-
 // Event Listeners
 window.addEventListener('resize', () => {
     resizeCanvas();
@@ -478,6 +503,55 @@ canvas.addEventListener('touchmove', (e) => {
     e.preventDefault();
 });
 
-// Start the game
-updateGameState();
-setInterval(updateTimer, 1000);
+// Initialization code
+document.addEventListener('DOMContentLoaded', () => {
+    // Load saved user data
+    loadUserData();
+    
+    // Initialize UI elements
+    const closeAdBtn = document.querySelector('.close-ad');
+    const adBanner = document.querySelector('.ad-banner');
+    
+    if (closeAdBtn && adBanner) {
+        closeAdBtn.addEventListener('click', () => {
+            adBanner.style.transform = 'translate(-50%, 100%)';
+        });
+    }
+
+    // Initialize game controls
+    ballCountInput.addEventListener('change', () => {
+        if (parseInt(ballCountInput.value) > MAX_BALLS) {
+            ballCountInput.value = MAX_BALLS;
+        }
+        if (parseInt(ballCountInput.value) < 1) {
+            ballCountInput.value = 1;
+        }
+    });
+
+    betInput.addEventListener('change', () => {
+        if (parseInt(betInput.value) < 20) {
+            betInput.value = 20;
+        }
+    });
+
+    dropBtn.addEventListener('click', dropBalls);
+
+    // Initialize canvas and responsive handling
+    resizeCanvas();
+    initializeGame();
+    
+    // Start game loop and timer
+    updateGameState();
+    setInterval(updateTimer, 1000);
+});
+
+// Add window resize listener
+window.addEventListener('resize', () => {
+    resizeCanvas();
+    initializeGame();
+});
+
+// Add touch event handlers
+canvas.addEventListener('touchstart', (e) => e.preventDefault());
+canvas.addEventListener('touchmove', (e) => e.preventDefault());
+
