@@ -24,12 +24,43 @@ const BALL_RADIUS = 10;
 const PEG_RADIUS = 5;
 const ROWS = 14;
 const COLS = 18;
-const MULTIPLIERS = [100, 25, 10, 5, 2, 1, 0.5, 0.5, 0.5, 0.2, 0.5, 0.5, 0.5, 1, 2, 5, 10, 25, 100];
+const MULTIPLIERS = [200, 100, 25, 10, 5, 2, 1, 0.5, 0.2, 0.5, 1, 2, 5, 10, 25, 100, 200];
 const GRAVITY = 0.5;
 const BOUNCE_VARIATION = 0.3;
 const MAX_VELOCITY = 15;
 const MAX_PARTICLES = 500;
 const MAX_POPUPS = 20;
+
+// Storage functions
+function saveUserData() {
+    const userData = {
+        balance: balance,
+        lastFreeMoneyTime: lastFreeMoneyTime
+    };
+    localStorage.setItem('plinkoUserData', JSON.stringify(userData));
+    console.log('Data saved:', userData);
+}
+
+function loadUserData() {
+    const savedData = localStorage.getItem('plinkoUserData');
+    console.log('Data loaded:', savedData);
+    if (savedData) {
+        const userData = JSON.parse(savedData);
+        balance = userData.balance;
+        lastFreeMoneyTime = userData.lastFreeMoneyTime;
+        balanceDisplay.textContent = balance;
+    } else {
+        balance = 1000;
+        lastFreeMoneyTime = Date.now();
+        saveUserData();
+    }
+}
+
+function updateBalance(newBalance) {
+    balance = newBalance;
+    balanceDisplay.textContent = balance;
+    saveUserData();
+}
 
 // Visual style constants
 const SLOT_COLORS = {
@@ -69,11 +100,9 @@ let popups = [];
 let isProcessing = false;
 
 function initializeGame() {
-    // Clear existing arrays
     pegs = [];
     slots = [];
 
-    // Initialize pegs
     const PEG_SPACING_X = canvas.width / (COLS + 1);
     const PEG_SPACING_Y = (canvas.height - 150) / (ROWS + 1);
 
@@ -90,7 +119,6 @@ function initializeGame() {
         }
     }
 
-    // Initialize slots
     for (let i = 0; i < MULTIPLIERS.length; i++) {
         slots.push({
             x: (i + 0.5) * (canvas.width / MULTIPLIERS.length),
@@ -102,40 +130,13 @@ function initializeGame() {
     }
 }
 
-initializeGame();
-// Add these functions at the beginning after the constants
-
-function saveUserData() {
-    const userData = {
-        balance: balance,
-        lastFreeMoneyTime: lastFreeMoneyTime
-    };
-    localStorage.setItem('plinkoUserData', JSON.stringify(userData));
-}
-
-function loadUserData() {
-    const savedData = localStorage.getItem('plinkoUserData');
-    if (savedData) {
-        const userData = JSON.parse(savedData);
-        balance = userData.balance;
-        lastFreeMoneyTime = userData.lastFreeMoneyTime;
-        balanceDisplay.textContent = balance;
-    }
-}
-
-// Add these calls to save data
-function updateBalance(newBalance) {
-    balance = newBalance;
-    balanceDisplay.textContent = balance;
-    saveUserData();
-}
-
 function getSlotStyle(multiplier) {
     if (multiplier >= 200) return SLOT_COLORS.x200;
     if (multiplier >= 100) return SLOT_COLORS.x100;
     if (multiplier >= 25) return SLOT_COLORS.x25;
     return SLOT_COLORS.default;
 }
+
 function createParticles(x, y, color, amount = 10) {
     if (particles.length > MAX_PARTICLES) {
         particles.splice(0, amount);
@@ -247,6 +248,7 @@ function drawPegs() {
         ctx.fill();
     });
 }
+
 function drawSlots() {
     slots.forEach(slot => {
         const colors = getSlotStyle(slot.multiplier);
@@ -274,15 +276,12 @@ function updateBalls() {
     
     for (const ball of balls) {
         ball.vy += GRAVITY;
-        
-        // Limit maximum velocity
         ball.vx = Math.max(Math.min(ball.vx, MAX_VELOCITY), -MAX_VELOCITY);
         ball.vy = Math.max(Math.min(ball.vy, MAX_VELOCITY), -MAX_VELOCITY);
         
         ball.x += ball.vx;
         ball.y += ball.vy;
         
-        // Bounce off walls
         if (ball.x < BALL_RADIUS) {
             ball.x = BALL_RADIUS;
             ball.vx *= -0.7;
@@ -311,7 +310,6 @@ function handleBallLanding(ball) {
     if (slot) {
         const winAmount = Math.floor(ball.bet * slot.multiplier);
         updateBalance(balance + winAmount);
-        balanceDisplay.textContent = balance;
         
         requestAnimationFrame(() => {
             if (slot.multiplier >= 200) {
@@ -353,8 +351,7 @@ function handleCollisions(ball) {
             ball.vy = Math.sin(angle) * 4 * (1 + Math.random() * BOUNCE_VARIATION);
             ball.vx += (Math.random() - 0.5) * 2;
         }
-    });
-}
+    });}
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -362,7 +359,6 @@ function draw() {
     drawPegs();
     drawSlots();
 
-    // Draw balls and trails
     balls.forEach(ball => {
         if (ball.trail) {
             ctx.beginPath();
@@ -387,7 +383,6 @@ function draw() {
         ctx.fill();
     });
 
-    // Draw particles and popups
     particles.forEach(particle => {
         particle.x += particle.vx;
         particle.y += particle.vy;
@@ -412,6 +407,7 @@ function draw() {
         }
     });
 }
+
 function updateGameState() {
     requestAnimationFrame(() => {
         cleanup();
@@ -428,9 +424,8 @@ function dropBalls() {
 
     if (betAmount >= 20 && balance >= totalCost) {
         updateBalance(balance - totalCost);
-        balanceDisplay.textContent = balance;
-
         const dropWidth = Math.min(canvas.width * 0.3, 200);
+        
         for (let i = 0; i < ballCount; i++) {
             setTimeout(() => {
                 balls.push({
@@ -460,55 +455,11 @@ function updateTimer() {
         createPopup(`+$${FREE_MONEY_AMOUNT} FREE!`, canvas.width/2, canvas.height/2);
     }
 }
-// Event Listeners
-window.addEventListener('resize', () => {
-    resizeCanvas();
-    initializeGame();
-});
 
+// Initialization and Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
-    const closeAdBtn = document.querySelector('.close-ad');
-    const adBanner = document.querySelector('.ad-banner');
-    
-    if (closeAdBtn && adBanner) {
-        closeAdBtn.addEventListener('click', () => {
-            adBanner.style.transform = 'translate(-50%, 100%)';
-        });
-    }
-});
-
-ballCountInput.addEventListener('change', () => {
-    if (parseInt(ballCountInput.value) > MAX_BALLS) {
-        ballCountInput.value = MAX_BALLS;
-    }
-    if (parseInt(ballCountInput.value) < 1) {
-        ballCountInput.value = 1;
-    }
-});
-
-betInput.addEventListener('change', () => {
-    if (parseInt(betInput.value) < 20) {
-        betInput.value = 20;
-    }
-});
-
-dropBtn.addEventListener('click', dropBalls);
-
-// Touch events for mobile
-canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-});
-
-canvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-});
-
-// Initialization code
-document.addEventListener('DOMContentLoaded', () => {
-    // Load saved user data
     loadUserData();
     
-    // Initialize UI elements
     const closeAdBtn = document.querySelector('.close-ad');
     const adBanner = document.querySelector('.ad-banner');
     
@@ -518,7 +469,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Initialize game controls
     ballCountInput.addEventListener('change', () => {
         if (parseInt(ballCountInput.value) > MAX_BALLS) {
             ballCountInput.value = MAX_BALLS;
@@ -536,22 +486,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     dropBtn.addEventListener('click', dropBalls);
 
-    // Initialize canvas and responsive handling
     resizeCanvas();
     initializeGame();
-    
-    // Start game loop and timer
     updateGameState();
     setInterval(updateTimer, 1000);
 });
 
-// Add window resize listener
 window.addEventListener('resize', () => {
     resizeCanvas();
     initializeGame();
 });
 
-// Add touch event handlers
+window.addEventListener('beforeunload', () => {
+    saveUserData();
+});
+
+setInterval(saveUserData, 30000);
+
 canvas.addEventListener('touchstart', (e) => e.preventDefault());
 canvas.addEventListener('touchmove', (e) => e.preventDefault());
-
