@@ -1,27 +1,49 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const dropBtn = document.getElementById('dropBtn');
+const redeemBtn = document.getElementById('redeemBtn');
+const watchAdBtn = document.getElementById('watchAdBtn');
 const balanceDisplay = document.getElementById('balance');
 const timerDisplay = document.getElementById('timer');
 const betInput = document.getElementById('betAmount');
 const ballCountInput = document.getElementById('ballCount');
 
+let animationFrameId = null;
+
 function resizeCanvas() {
-    const isMobile = window.innerWidth < 768;
-    canvas.width = isMobile ? window.innerWidth : 1200;
-    canvas.height = isMobile ? window.innerHeight * 0.8 : 900;
+    canvas.width = 1200;
+    canvas.height = 900;
 }
+
+// canvas and ctx are already declared in the global scope
+
+function initGame() {
+    canvas = document.getElementById('gameCanvas');
+    if (!canvas) return;
+    
+    ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    resizeCanvas();
+    loadUserData();
+    initializeGame();
+    draw();
+    setInterval(updateTimer, 1000);
+}
+
+// Replace the DOMContentLoaded listener with this
+window.addEventListener('DOMContentLoaded', initGame);
 
 resizeCanvas();
 
 // Game constants
-let balance = 1000;
-let lastFreeMoneyTime = Date.now();
-const FREE_MONEY_COOLDOWN = 3600000;
-const FREE_MONEY_AMOUNT = 1000;
+let balance = 100;
+let lastFreePointsTime = Date.now();
+const FREE_POINTS_COOLDOWN = 3600000;
+const FREE_POINTS_AMOUNT = 100;
 const MAX_BALLS = 100;
-const BALL_RADIUS = 10;
-const PEG_RADIUS = 5;
+const BALL_RADIUS = 5;
+const PEG_RADIUS = 10;
 const ROWS = 14;
 const COLS = 18;
 const MULTIPLIERS = [20, 10, 5, 2.5, 2, 1, 0.5, 0.2, 0.2, 0.2, 0.5, 1, 2, 2.5, 5, 10, 20];
@@ -30,12 +52,18 @@ const BOUNCE_VARIATION = 0.3;
 const MAX_VELOCITY = 15;
 const MAX_PARTICLES = 500;
 const MAX_POPUPS = 20;
+const MIN_REDEEM_POINTS = 100;
+const AD_REWARD = 50;
+const AD_COOLDOWN = 300000; // 5 minutes
+
+let lastAdWatchTime = 0;
 
 // Storage functions
 function saveUserData() {
     const userData = {
         balance: balance,
-        lastFreeMoneyTime: lastFreeMoneyTime
+        lastFreePointsTime: lastFreePointsTime,
+        lastAdWatchTime: lastAdWatchTime
     };
     localStorage.setItem('plinkoUserData', JSON.stringify(userData));
     console.log('Data saved:', userData);
@@ -47,43 +75,46 @@ function loadUserData() {
     if (savedData) {
         const userData = JSON.parse(savedData);
         balance = userData.balance;
-        lastFreeMoneyTime = userData.lastFreeMoneyTime;
-        balanceDisplay.textContent = balance;
+        lastFreePointsTime = userData.lastFreePointsTime;
+        lastAdWatchTime = userData.lastAdWatchTime || 0;
+        balanceDisplay.textContent = formatNumber(balance);
     } else {
         balance = 1000;
-        lastFreeMoneyTime = Date.now();
+        lastFreePointsTime = Date.now();
+        lastAdWatchTime = 0;
         saveUserData();
     }
 }
 
 function updateBalance(newBalance) {
     balance = newBalance;
-    balanceDisplay.textContent = balance;
+    balanceDisplay.textContent = formatNumber(balance);
     saveUserData();
 }
 
+
 // Visual style constants
 const SLOT_COLORS = {
-    x200: ['#FF4D4D', '#FF6B6B'],
-    x100: ['#FF6B6B', '#FF8E8E'],
-    x25: ['#4ECDC4', '#45B7AF'],
+    x20: ['#FF4D4D', '#FF6B6B'],
+    x10: ['#FF6B6B', '#FF8E8E'],
+    x5: ['#4ECDC4', '#45B7AF'],
     default: ['#2C3E50', '#34495E']
 };
 
 const ANIMATIONS = {
-    x200: {
+    x20: {
         colors: ['#FF4D4D', '#FF6B6B', '#FF8E8E'],
         particles: 60,
         duration: 2500,
         spread: 360
     },
-    x100: {
+    x10: {
         colors: ['#FFD700', '#FFA500', '#FF4500'],
         particles: 50,
         duration: 2000,
         spread: 360
     },
-    x25: {
+    x5: {
         colors: ['#4ECDC4', '#45B7AF', '#2FB4AE'],
         particles: 30,
         duration: 1500,
@@ -131,9 +162,9 @@ function initializeGame() {
 }
 
 function getSlotStyle(multiplier) {
-    if (multiplier >= 200) return SLOT_COLORS.x200;
-    if (multiplier >= 100) return SLOT_COLORS.x100;
-    if (multiplier >= 25) return SLOT_COLORS.x25;
+    if (multiplier >= 20) return SLOT_COLORS.x20;
+    if (multiplier >= 10) return SLOT_COLORS.x10;
+    if (multiplier >= 5) return SLOT_COLORS.x5;
     return SLOT_COLORS.default;
 }
 
@@ -156,8 +187,8 @@ function createParticles(x, y, color, amount = 10) {
 }
 
 function createSpecialWinEffect(ball, multiplier) {
-    const config = multiplier >= 200 ? ANIMATIONS.x200 : 
-                  multiplier >= 100 ? ANIMATIONS.x100 : ANIMATIONS.x25;
+    const config = multiplier >= 20 ? ANIMATIONS.x20 : 
+                  multiplier >= 10 ? ANIMATIONS.x10 : ANIMATIONS.x5;
     
     for (let i = 0; i < config.particles; i++) {
         const angle = (i / config.particles) * config.spread * Math.PI / 180;
@@ -177,8 +208,8 @@ function createSpecialWinEffect(ball, multiplier) {
     }
     
     const shockwave = document.createElement('div');
-    shockwave.className = multiplier >= 200 ? 'shockwave-200' :
-                         multiplier >= 100 ? 'shockwave-100' : 'shockwave-25';
+    shockwave.className = multiplier >= 20 ? 'shockwave-20' :
+                         multiplier >= 10 ? 'shockwave-10' : 'shockwave-5';
     shockwave.style.left = `${ball.x}px`;
     shockwave.style.top = `${ball.y}px`;
     document.body.appendChild(shockwave);
@@ -193,7 +224,7 @@ function createSpecialWinEffect(ball, multiplier) {
 function createJackpotEffect(amount) {
     const jackpotDiv = document.createElement('div');
     jackpotDiv.className = 'jackpot-alert';
-    jackpotDiv.textContent = `JACKPOT! $${amount}`;
+    jackpotDiv.textContent = `¡JACKPOT! ${amount} puntos`;
     document.body.appendChild(jackpotDiv);
     
     setTimeout(() => {
@@ -209,7 +240,7 @@ function createPopup(text, x, y) {
     }
     
     popups.push({
-        text,
+        text: formatNumber(text),
         x,
         y,
         life: 1,
@@ -248,6 +279,74 @@ function drawPegs() {
         ctx.fill();
     });
 }
+document.addEventListener('DOMContentLoaded', () => {
+    // Verify all required elements exist
+    const requiredElements = [
+        'gameCanvas',
+        'dropBtn',
+        'redeemBtn', 
+        'watchAdBtn',
+        'balance',
+        'timer',
+        'betAmount',
+        'ballCount'
+    ];
+    
+    const missingElements = requiredElements.filter(id => !document.getElementById(id));
+    
+    if (missingElements.length > 0) {
+        console.error('Missing required elements:', missingElements);
+        return;
+    }
+
+    loadUserData();
+    initializeGame();
+    draw();
+    setInterval(updateTimer, 1000);
+});
+function initializeCanvas() {
+    const canvas = document.getElementById('gameCanvas');
+    if (!canvas) {
+        console.error('Canvas element not found');
+        return false;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        console.error('Canvas context not available');
+        return false;
+    }
+    
+    resizeCanvas();
+    return true;
+}
+window.addEventListener('load', () => {
+    if (initializeCanvas()) {
+        startGame();
+    }
+});
+function loadUserData() {
+    try {
+        const savedData = localStorage.getItem('plinkoUserData');
+        if (savedData) {
+            const userData = JSON.parse(savedData);
+            balance = userData.balance;
+            lastFreePointsTime = userData.lastFreePointsTime;
+            lastAdWatchTime = userData.lastAdWatchTime || 0;
+            balanceDisplay.textContent = formatNumber(balance);
+        } else {
+            balance = 1000;
+            lastFreePointsTime = Date.now();
+            lastAdWatchTime = 0;
+            saveUserData();
+        }
+    } catch (error) {
+        console.error('Error loading user data:', error);
+        balance = 1000;
+        lastFreePointsTime = Date.now();
+        lastAdWatchTime = 0;
+    }
+}
 
 function drawSlots() {
     slots.forEach(slot => {
@@ -259,9 +358,9 @@ function drawSlots() {
         ctx.roundRect(slot.x - width/2, slot.y - 25, width, 50, 8);
         ctx.fill();
         
-        const fontSize = slot.multiplier >= 200 ? 26 :
-                        slot.multiplier >= 100 ? 24 : 
-                        slot.multiplier >= 25 ? 25 : 22;
+        const fontSize = slot.multiplier >= 20 ? 26 :
+                        slot.multiplier >= 10 ? 24 : 
+                        slot.multiplier >= 5 ? 25 : 22;
         
         ctx.font = `bold ${fontSize}px Inter, Arial`;
         ctx.fillStyle = '#FFFFFF';
@@ -312,16 +411,16 @@ function handleBallLanding(ball) {
         updateBalance(balance + winAmount);
         
         requestAnimationFrame(() => {
-            if (slot.multiplier >= 200) {
-                createSpecialWinEffect(ball, 200);
-                createJackpotEffect(winAmount);
-            } else if (slot.multiplier >= 100) {
-                createSpecialWinEffect(ball, 100);
-                createJackpotEffect(winAmount);
-            } else if (slot.multiplier >= 25) {
-                createSpecialWinEffect(ball, 25);
+            if (slot.multiplier >= 20) {
+                createSpecialWinEffect(ball, 20);
+                createJackpotEffect(formatNumber(winAmount));
+            } else if (slot.multiplier >= 10) {
+                createSpecialWinEffect(ball, 10);
+                createJackpotEffect(formatNumber(winAmount));
+            } else if (slot.multiplier >= 5) {
+                createSpecialWinEffect(ball, 5);
             }
-            createPopup(`$${winAmount}!`, ball.x, ball.y - 50);
+            createPopup(`${winAmount} puntos!`, ball.x, ball.y - 50);
             isProcessing = false;
         });
     } else {
@@ -351,7 +450,8 @@ function handleCollisions(ball) {
             ball.vy = Math.sin(angle) * 4 * (1 + Math.random() * BOUNCE_VARIATION);
             ball.vx += (Math.random() - 0.5) * 2;
         }
-    });}
+    });
+}
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -409,12 +509,32 @@ function draw() {
 }
 
 function updateGameState() {
-    requestAnimationFrame(() => {
-        cleanup();
-        updateBalls();
-        draw();
+    cleanup();
+    updateBalls();
+    draw();
+    
+    animationFrameId = requestAnimationFrame(updateGameState);
+}
+function startGame() {
+    if (animationFrameId === null) {
         updateGameState();
-    });
+    }
+}
+
+function stopGame() {
+    if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+    }
+}
+
+function formatNumber(num) {
+    const suffixes = ['', 'K', 'M', 'B', 'T', 'QD', 'QN', 'SX', 'SP', 'OC', 'NO', 'DC'];
+    const numAbs = Math.abs(num);
+    if (numAbs < 1000) return num.toString();
+    const exp = Math.min(Math.floor(Math.log10(numAbs) / 3), suffixes.length - 1);
+    const shortened = (numAbs / Math.pow(1000, exp)).toFixed(1);
+    return (Math.sign(num) * parseFloat(shortened)).toString() + suffixes[exp];
 }
 
 function dropBalls() {
@@ -438,21 +558,55 @@ function dropBalls() {
                 });
             }, i * 100);
         }
+        startGame();
+    } else {
+        alert("Apuesta no válida o saldo insuficiente");
     }
 }
 
 function updateTimer() {
     const now = Date.now();
-    const timeLeft = Math.max(0, FREE_MONEY_COOLDOWN - (now - lastFreeMoneyTime));
+    const timeLeft = Math.max(0, FREE_POINTS_COOLDOWN - (now - lastFreePointsTime));
     const minutes = Math.floor(timeLeft / 60000);
     const seconds = Math.floor((timeLeft % 60000) / 1000);
     timerDisplay.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
     if (timeLeft === 0) {
-        updateBalance(balance + FREE_MONEY_AMOUNT);
-        lastFreeMoneyTime = now;
+        updateBalance(balance + FREE_POINTS_AMOUNT);
+        lastFreePointsTime = now;
         saveUserData();
-        createPopup(`+$${FREE_MONEY_AMOUNT} FREE!`, canvas.width/2, canvas.height/2);
+        createPopup(`+${formatNumber(FREE_POINTS_AMOUNT)} puntos GRATIS!`, canvas.width/2, canvas.height/2);
+    }
+}
+
+function redeemPoints() {
+    if (balance >= MIN_REDEEM_POINTS) {
+        const redeemableAmount = Math.floor(balance / 100) * 100;
+        const confirmRedeem = confirm(`¿Quieres canjear ${formatNumber(redeemableAmount)} puntos por ${redeemableAmount / 100}€ en tarjetas de regalo?`);
+        
+        if (confirmRedeem) {
+            updateBalance(balance - redeemableAmount);
+            alert(`Has canjeado exitosamente ${formatNumber(redeemableAmount)} puntos por ${redeemableAmount / 100}€ en tarjetas de regalo. Tu nuevo balance es ${formatNumber(balance)} puntos.`);
+            // Aquí se implementaría la lógica para generar y enviar la tarjeta de regalo
+        }
+    } else {
+        alert(`Necesitas al menos ${formatNumber(MIN_REDEEM_POINTS)} puntos para canjear por tarjetas de regalo.`);
+    }
+}
+
+function watchAd() {
+    const now = Date.now();
+    if (now - lastAdWatchTime >= AD_COOLDOWN) {
+        // Simular ver un anuncio
+        setTimeout(() => {
+            updateBalance(balance + AD_REWARD);
+            lastAdWatchTime = now;
+            saveUserData();
+            alert(`¡Gracias por ver el anuncio! Has ganado ${formatNumber(AD_REWARD)} puntos.`);
+        }, 5000);
+    } else {
+        const timeLeft = Math.ceil((AD_COOLDOWN - (now - lastAdWatchTime)) / 60000);
+        alert(`Debes esperar ${timeLeft} minutos antes de poder ver otro anuncio.`);
     }
 }
 
@@ -478,23 +632,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    betInput.addEventListener('change', () => {
-        if (parseInt(betInput.value) < 20) {
-            betInput.value = 20;
-        }
-    });
-
     dropBtn.addEventListener('click', dropBalls);
+    redeemBtn.addEventListener('click', redeemPoints);
+    watchAdBtn.addEventListener('click', watchAd);
 
     resizeCanvas();
     initializeGame();
-    updateGameState();
+    draw(); // Dibuja el estado inicial del juego
     setInterval(updateTimer, 1000);
 });
 
 window.addEventListener('resize', () => {
     resizeCanvas();
     initializeGame();
+    draw(); // Redibuja el juego después de cambiar el tamaño
 });
 
 window.addEventListener('beforeunload', () => {
